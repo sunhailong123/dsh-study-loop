@@ -1,0 +1,13 @@
+# dsh-study-loop 的默认插入点。
+# 只声明 id / name / inject，其余全部走插件内置默认值（数据目录 ~/.dsh-study-loop），
+# 这样别的机器装上去不用改任何路径就能跑。要覆盖时在 profile 的 cordis.patch.yml 里
+# 对同一个 id 写 config 即可：
+#
+#   - id: study-loop
+#     config:
+#       dataDir: '/your/path'
+#       legacyQuizDir: '/your/quiz-dojo'
+- insert:
+    - id: study-loop
+      name: 'dsh-study-loop'
+      inject: [ webServer ]

@@ -1,0 +1,53 @@
+{
+  "name": "dsh-study-loop",
+  "version": "0.1.0",
+  "description": "Learn first, then get quizzed: a floating study loop for DeepSeek Harness that teaches a topic, then asks you about it — and brings old knowledge back later from a new angle.",
+  "type": "module",
+  "main": "lib/index.js",
+  "license": "MIT",
+  "author": "SunHaiLong",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SunHaiLong/dsh-study-loop.git"
+  },
+  "bugs": {
+    "url": "https://github.com/SunHaiLong/dsh-study-loop/issues"
+  },
+  "homepage": "https://github.com/SunHaiLong/dsh-study-loop#readme",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "study",
+    "spaced-repetition",
+    "quiz"
+  ],
+  "files": [
+    "lib",
+    "client",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./client/index.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "manifestVersion": 1,
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [],
+      "platform": "web"
+    }
+  },
+  "scripts": {
+    "typecheck": "node --check lib/index.js && node --check lib/store.js && node --check lib/review.js && node --check lib/importer.js && node --check lib/generate.js && node --check client/index.js",
+    "selftest": "node scripts/selftest.mjs",
+    "clienttest": "node scripts/clienttest.mjs",
+    "test": "node scripts/selftest.mjs && node scripts/clienttest.mjs"
+  }
+}

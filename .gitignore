@@ -1,0 +1,7 @@
+node_modules/
+*.log
+.DS_Store
+Thumbs.db
+# 本机数据目录不在仓库内，但以防有人把数据放在项目下
+.data/
+*.tmp-study-loop
