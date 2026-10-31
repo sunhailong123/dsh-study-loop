@@ -147,6 +147,14 @@ async function fakeFetch(url, opts) {
     return json({ ok: true, value: host.state.value })
   }
   if (url === '/study-loop/api/dismiss') return json({ ok: true })
+  if (url === '/study-loop/api/open') {
+    host.opened = (host.opened || 0) + 1
+    const v = JSON.parse(JSON.stringify(host.state.value))
+    v.round.showSeq = (v.round.showSeq || 1) + 1
+    v.round.skipped = false
+    host.state = { ok: true, value: v }
+    return json({ ok: true, value: v })
+  }
   if (url === '/study-loop/api/bank') {
     return json({
       ok: true,
@@ -382,6 +390,26 @@ check('复习卡只给标题不给正文', card().textContent.indexOf('复习 ·
   timers[0].fn()
   await sleep(80)
   check('showSeq 变化 → 重新弹', dims().length === 1)
+}
+
+// ---- 右下角小按钮：收起后仍在，点它立刻重新打开（不用等 10 分钟）
+{
+  const fabs = () => body().children.filter(c => c.matches('.sl-fab'))
+  check('浮层打开时没有小按钮', fabs().length === 0, body().children.map(c => c.attrs.class || c.tagName))
+
+  const dismissBtn = card().querySelectorAll('.sl-btn').find(b => b.textContent === '收起')
+  dismissBtn.dispatch('click')
+  await sleep(40)
+  check('收起后浮层消失', dims().length === 0)
+  check('收起后右下角有小按钮', fabs().length === 1, body().children.map(c => c.attrs.class || c.tagName))
+  check('小按钮标出还剩几题', /2/.test(fabs()[0].textContent), fabs()[0].textContent)
+
+  const before = host.opened || 0
+  fabs()[0].dispatch('click')
+  await sleep(90)
+  check('点小按钮 → 调了 POST /open', (host.opened || 0) === before + 1, host.calls.slice(-4))
+  check('点小按钮 → 浮层重新弹出', dims().length === 1, body().children.map(c => c.attrs.class || c.tagName))
+  check('浮层重新打开后小按钮收起（不叠在卡片上）', fabs().length === 0)
 }
 
 // ---- 清理

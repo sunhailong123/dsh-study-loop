@@ -42,6 +42,18 @@ dsh plugin --profile web add link:D:\path\to\dsh-study-loop
 | **题库** | 三条维护路径全在这里：**模型生成** / **导入（JSON 文本、Excel .xlsx、CSV）** / **逐条删除与重置**；另有导出 CSV 和下载模板 |
 | **设置** | 节奏（间隔分钟、每轮题数、复习题配额、过关线）、模型（baseUrl / 模型名 / key 环境变量名 / key）、出题提示词模板 |
 
+## 怎么主动打开（不用等 10 分钟）
+
+三种入口，打开的都是同一个浮层：
+
+| 入口 | 说明 |
+|---|---|
+| **右下角常驻小按钮** | 浮层收起后，界面右下角留一个 `📚 学习循环 · 还有 N 题` 的胶囊按钮，点一下就弹回来（浮层开着时它自动收走，不叠在卡片上） |
+| **`POST /study-loop/api/open`** | 不等节拍、立刻弹当前轮；已经收起的轮次会被重新激活（`skipped` 清掉、`showSeq +1`）。如果当前根本没有轮次，会先现攒一轮 |
+| **等自动节拍** | 每 `intervalMinutes` 分钟自动弹一次；上一轮没答完会顺延，不会覆盖 |
+
+「收起」= 这一轮作废（到点出新轮），但右下角按钮还在，随时能点回来。「+10 分钟后」= 只是延后，同批题到点重弹。
+
 ## 题库怎么维护（三种方式，随便混用）
 
 ### 1. 模型生成（推荐）
@@ -140,6 +152,7 @@ dsh plugin --profile web add link:D:\path\to\dsh-study-loop
 | GET | `/bank/export?kind=questions\|lessons\|progress` | 导出 CSV |
 | POST | `/submit` | `{qid, score, note}`，**缺 score 返 400 且不落盘** |
 | POST | `/tab` | 切换 tab |
+| POST | `/open` | **主动打开**：立刻弹当前轮（`skipped` 清掉、`showSeq +1`）；没有轮次就先攒一轮 |
 | POST | `/regenerate` | 换一批 |
 | POST | `/snooze` | 本轮 +N 分钟后再弹（不作废） |
 | POST | `/dismiss` | 收起本轮（作废，到点出新轮） |

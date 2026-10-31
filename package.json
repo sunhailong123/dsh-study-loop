@@ -1,6 +1,6 @@
 {
   "name": "dsh-study-loop",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Learn first, then get quizzed: a floating study loop for DeepSeek Harness that teaches a topic, then asks you about it — and brings old knowledge back later from a new angle.",
   "type": "module",
   "main": "lib/index.js",

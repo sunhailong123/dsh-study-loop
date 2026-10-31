@@ -59,6 +59,9 @@ window.__ModuleLoader__.load({
       '.sl-list{display:flex;flex-direction:column;gap:6px;max-height:260px;overflow:auto}',
       '.sl-item{display:flex;align-items:center;gap:8px;padding:5px 8px;border:1px solid var(--dsw-alias-border-l2,#30363d);border-radius:8px;font-size:12px}',
       '.sl-item .grow{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+      '.sl-fab{position:fixed;right:18px;bottom:18px;z-index:2147482899;display:inline-flex;align-items:center;gap:7px;padding:7px 13px;border-radius:999px;border:1px solid var(--dsw-alias-border-l2,#30363d);background:var(--dsw-alias-bg-layer-1,#1b1f24);color:var(--dsw-alias-label-primary,#e6edf3);font:12px/1 inherit;font-family:inherit;cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.38);opacity:.85}',
+      '.sl-fab:hover{opacity:1}',
+      '.sl-fab .sl-dot{min-width:16px;height:16px;padding:0 4px;border-radius:999px;background:#1f6feb;color:#fff;font-size:11px;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box}',
     ].join('\n')
 
     var TABS = [
@@ -73,6 +76,8 @@ window.__ModuleLoader__.load({
       dim: null,
       card: null,
       visible: false,
+      fab: null,
+      fabLabel: null,
       tab: 'study',
       roundId: null,
       showSeq: 0,
@@ -167,9 +172,13 @@ window.__ModuleLoader__.load({
         if (state.dim && state.dim.parentNode) state.dim.parentNode.removeChild(state.dim)
         state.dim = null
         state.card = null
+        renderFab()
         return
       }
       injectStyle()
+      // 浮层开着时先收掉右下角小按钮，避免叠在卡片上
+      if (state.fab && state.fab.parentNode) state.fab.parentNode.removeChild(state.fab)
+      state.fab = null
       if (!state.dim) {
         state.dim = h('div', { class: 'sl-dim' }, [])
         document.body.appendChild(state.dim)
@@ -223,6 +232,44 @@ window.__ModuleLoader__.load({
       state.card = card
       state.dim.textContent = ''
       state.dim.appendChild(card)
+    }
+
+    // 右下角的常驻小按钮：浮层收起后仍然留着，点一下就重新打开（不用等 10 分钟）。
+    function renderFab() {
+      injectStyle()
+      var pending = state.round ? (Number(state.round.pendingCount) || 0) : 0
+      var label = pending > 0 ? '学习循环 · 还有 ' + pending + ' 题' : '学习循环'
+      if (state.fab && state.fab.parentNode) {
+        if (state.fabLabel) state.fabLabel.textContent = label
+        return
+      }
+      state.fabLabel = h('span', { text: label })
+      state.fab = h('button', {
+        class: 'sl-fab',
+        title: '打开学习循环（和每 10 分钟自动弹的是同一个浮层）',
+        onclick: function () { void openPanel() },
+      }, [
+        h('span', { text: '📚' }),
+        state.fabLabel,
+      ])
+      document.body.appendChild(state.fab)
+    }
+
+    // 主动打开：问后端要一轮（后端会把 showSeq +1），然后强制显示。
+    function openPanel() {
+      state.visible = true
+      state.error = null
+      render()
+      return api('/open', { method: 'POST', body: '{}' }).then(function (res) {
+        if (!res || !res.ok) {
+          state.error = '打开失败：' + ((res && res.error && res.error.message) || '接口不可用')
+          render()
+          return
+        }
+        applyState(res.value, true)
+        state.visible = true
+        render()
+      })
     }
 
     function switchTab(id) {
@@ -853,7 +900,7 @@ window.__ModuleLoader__.load({
         if (isNew) state.tab = 'study'
         try { localStorage.setItem(TAB_KEY, state.tab) } catch (e) { /* ignore */ }
       }
-      if (incoming.skipped) { state.visible = false; return }
+      if (incoming.skipped) { state.visible = false; renderFab(); return }
       if (isNew || reshow || forceShow) state.visible = true
     }
 

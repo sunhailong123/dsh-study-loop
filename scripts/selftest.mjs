@@ -440,7 +440,7 @@ let submittedLessonId = ''
   ok('预览里 {count} 被替换', p.json.value.prompt.indexOf('{count}') < 0)
   ok('预览里带知识点清单', p.json.value.prompt.indexOf('卡A') > 0)
 }
-// snooze / dismiss / tab
+// snooze / dismiss / tab / 主动打开
 {
   const sn = await post('/snooze', {})
   eq('snooze 200', sn.status, 200)
@@ -453,6 +453,39 @@ let submittedLessonId = ''
   eq('dismiss 200', dm.json.status, undefined)
   const st = await get('/state')
   eq('dismiss 后 skipped=true', st.json.value.round.skipped, true)
+
+  // 主动打开（右下角小按钮 / POST /open）：收起后不用等 10 分钟就能重新弹出来
+  const before = st.json.value.round
+  const op = await post('/open', {})
+  eq('open 200', op.status, 200)
+  const o = op.json.value
+  eq('open 后 skipped 清掉', o.round.skipped, false)
+  eq('open 后还是同一轮（不换题）', o.round.id, before.id)
+  ok('open 后 showSeq +1（客户端据此重弹）', o.round.showSeq === before.showSeq + 1)
+  ok('open 后倒计时节拍不变', o.nextInMs > 9 * 60000)
+  const op2 = await post('/open', {})
+  ok('连点两次每次都 +1', op2.json.value.round.showSeq === before.showSeq + 2)
+  eq('open 不落盘（进度没新增）', op2.json.value.round.answeredCount, before.answeredCount)
+}
+// 空库时 /open 也要能立刻攒出一轮
+{
+  const t = fs.mkdtempSync(path.join(os.tmpdir(), 'study-loop-open-'))
+  let h3 = null
+  const ctx3 = {
+    logger: { info: () => {}, warn: () => {}, error: () => {} },
+    effect(fn) { return fn() },
+    webServer: { register(opts) { h3 = opts.handler; return () => { h3 = null } } },
+  }
+  mod.apply(ctx3, { dataDir: t, legacyQuizDir: '', autoStart: false })
+  const srv = http.createServer((req, res) => h3(req, res))
+  await new Promise(r => srv.listen(0, '127.0.0.1', r))
+  const u = 'http://127.0.0.1:' + srv.address().port + '/study-loop/api'
+  const r = await fetch(u + '/open', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })
+  const j = await r.json()
+  eq('空库 open 200', r.status, 200)
+  ok('空库 open 也能给出 round', Boolean(j.value && j.value.round))
+  ok('空库 open 会给出题库空的提示', Boolean(j.value.round.warnings.length > 0))
+  await new Promise(r2 => srv.close(r2))
 }
 // 删除 / 重置
 {
