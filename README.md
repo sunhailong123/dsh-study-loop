@@ -1,5 +1,7 @@
 # dsh-study-loop
 
+[![Listed on dsh-plugin.org](https://dsh-plugin.org/badges/listed.svg)](https://dsh-plugin.org/plugins/sunhailong123/dsh-study-loop)
+
 > 先学，再考，然后过一段时间换个角度再问一次。
 
 一个给 [DeepSeek Harness](https://github.com/deepseek-ai/dsh) 用的插件：每隔 N 分钟弹出一张浮动卡片，
