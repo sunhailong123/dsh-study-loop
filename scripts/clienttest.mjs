@@ -22,6 +22,7 @@ class FakeEl {
     this.listeners = {}
     this._text = ''
     this.value = ''
+    this.scrollTop = 0
   }
   setAttribute(k, v) { this.attrs[k] = String(v) }
   getAttribute(k) { return this.attrs[k] === undefined ? null : this.attrs[k] }
@@ -410,6 +411,33 @@ check('复习卡只给标题不给正文', card().textContent.indexOf('复习 ·
   check('点小按钮 → 调了 POST /open', (host.opened || 0) === before + 1, host.calls.slice(-4))
   check('点小按钮 → 浮层重新弹出', dims().length === 1, body().children.map(c => c.attrs.class || c.tagName))
   check('浮层重新打开后小按钮收起（不叠在卡片上）', fabs().length === 0)
+}
+
+// ---- 轮询不能把正在看的题刷回顶部（用户 2026-11-01 报的 bug）
+{
+  const before = card()
+  const bodyEl = before.querySelector('.sl-body')
+  const q1 = card().querySelectorAll('.sl-q')[0]
+  bodyEl.scrollTop = 420
+  // 同状态再轮询一次：不该重画，卡片还是同一个 DOM 节点
+  timers[0].fn()
+  await sleep(60)
+  check('状态没变 → 轮询不重画卡片', card() === before, 'card 被换掉了')
+  check('状态没变 → 轮询后滚动位置还在', card().querySelector('.sl-body').scrollTop === 420, card().querySelector('.sl-body').scrollTop)
+  check('状态没变 → 正在看的题还是同一个节点', card().querySelectorAll('.sl-q')[0] === q1)
+
+  // 状态真的变了（比如别人提交了一道）→ 允许重画，但滚动位置要还原
+  const s = JSON.parse(JSON.stringify(host.state.value))
+  s.round.answered = Object.assign({}, s.round.answered, { 'Q-9': { score: 3, passed: true } })
+  host.state = { ok: true, value: s }
+  timers[0].fn()
+  await sleep(60)
+  check('状态变了 → 重画', card() !== before)
+  check('重画后滚动位置被还原', card().querySelector('.sl-body').scrollTop === 420, card().querySelector('.sl-body').scrollTop)
+  // 复位，后面的用例还要用原来的状态
+  host.state = roundState()
+  timers[0].fn()
+  await sleep(60)
 }
 
 // ---- 清理

@@ -169,8 +169,8 @@ dsh plugin --profile web add link:D:\path\to\dsh-study-loop
 
 ```bash
 npm run typecheck    # node --check 六个文件
-npm run selftest     # 宿主 + 纯函数：131 项（含手造 xlsx、CSV、间隔重复、HTTP 端点）
-npm run clienttest   # 客户端假 DOM：52 项（学习/答题/题库/设置四个 tab 的行为）
+npm run selftest     # 宿主 + 纯函数：141 项（含手造 xlsx、CSV、间隔重复、HTTP 端点）
+npm run clienttest   # 客户端假 DOM：64 项（学习/答题/题库/设置四个 tab 的行为、轮询不打断阅读）
 npm test             # 两个都跑
 ```
 
@@ -193,6 +193,7 @@ Start-Sleep 12
 ## 已知边界
 
 - 浮层是自绘 DOM 挂 `document.body`（z-index 2147482900），没走 `shell.overlay` 槽位（那一层 z-index 只有 20）。代价：插件被卸载时浮层不会自动清场，刷新页面即可。
+- 每 5 秒轮询一次 `/state`，但**状态没实质变化就不重画**；真要重画时也会把 `.sl-body` 的滚动位置还原，所以看着某道题的时候不会被打回顶部（v0.2.1 修的）。
 - 判分是**自评**（0–5），不调模型打分。想让模型判分的话，`/submit` 的 `score` 完全可以由外部算好再传。
 - 题目/学习卡都存 JSON，一万题以内无压力；作答历史截断到 2000 条。
 - 模型生成需要能出网的 OpenAI 兼容端点；本地 Ollama 也能用，把 `baseUrl` 指到 `http://127.0.0.1:11434/v1` 即可（本地地址不校验 key）。

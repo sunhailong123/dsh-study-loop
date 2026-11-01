@@ -75,6 +75,8 @@ window.__ModuleLoader__.load({
       styleInjected: false,
       dim: null,
       card: null,
+      body: null,
+      sig: '',
       visible: false,
       fab: null,
       fabLabel: null,
@@ -172,6 +174,8 @@ window.__ModuleLoader__.load({
         if (state.dim && state.dim.parentNode) state.dim.parentNode.removeChild(state.dim)
         state.dim = null
         state.card = null
+        state.body = null
+        state.sig = stateSignature()
         renderFab()
         return
       }
@@ -179,6 +183,8 @@ window.__ModuleLoader__.load({
       // 浮层开着时先收掉右下角小按钮，避免叠在卡片上
       if (state.fab && state.fab.parentNode) state.fab.parentNode.removeChild(state.fab)
       state.fab = null
+      // 重画会把 .sl-body 换成一个新元素，滚动位置会归零 —— 先记住再还原。
+      var keepScroll = state.body ? (Number(state.body.scrollTop) || 0) : 0
       if (!state.dim) {
         state.dim = h('div', { class: 'sl-dim' }, [])
         document.body.appendChild(state.dim)
@@ -230,8 +236,12 @@ window.__ModuleLoader__.load({
 
       var card = h('div', { class: 'sl-card' }, [head, tabBar, body, foot])
       state.card = card
+      state.body = body
       state.dim.textContent = ''
       state.dim.appendChild(card)
+      // 还原滚动位置：轮询每 5 秒重画一次，不还原的话正在看的题会被弹回顶部。
+      if (keepScroll > 0) body.scrollTop = keepScroll
+      state.sig = stateSignature()
     }
 
     // 右下角的常驻小按钮：浮层收起后仍然留着，点一下就重新打开（不用等 10 分钟）。
@@ -912,15 +922,45 @@ window.__ModuleLoader__.load({
       return 'study'
     }
 
+    // 轮询每 5 秒回来一次，绝大多数时候内容没变。这里给"会改变画面"的字段算个指纹，
+    // 没变就直接返回 —— 不重画，正在看的题就不会被弹回顶部。
+    function stateSignature() {
+      var r = state.round
+      var answered = r ? r.answered || {} : {}
+      var ids = Object.keys(answered).sort()
+      var parts = [
+        state.visible ? '1' : '0',
+        state.tab,
+        r ? r.id : '-',
+        r ? String(r.showSeq) : '-',
+        r ? (r.skipped ? '1' : '0') : '-',
+        r ? ((r.warnings || []).join(';')) : '-',
+        ids.join(','),
+        state.error || '',
+        state.notice || '',
+        String(Object.keys(state.keys).sort().join(',')),
+        Object.keys(state.showAnswer).filter(function (k) { return state.showAnswer[k] }).sort().join(','),
+        state.bank ? String((state.bank.totals || {}).questions) + '/' + String((state.bank.totals || {}).lessons) + '/' + String((state.bank.totals || {}).dueNow) + '/' + String((state.bank.totals || {}).attempts) : '-',
+        state.settings ? String(state.settings.intervalMinutes) + '/' + String(state.settings.questionsPerRound) : '-',
+        state.lessonView ? String(state.lessonView.id) : '-',
+        state.promptPreview ? String(String(state.promptPreview).length) : '-',
+      ]
+      return parts.join('|')
+    }
+
     function refresh() {
       return api('/state').then(function (res) {
         if (!res || !res.ok) {
           state.error = (res && res.error && res.error.message) || '插件接口不可用（宿主端没加载？）'
+          state.sig = ''
           render()
           return
         }
         state.error = null
         applyState(res.value, false)
+        var sig = stateSignature()
+        if (sig === state.sig) return
+        state.sig = sig
         render()
       })
     }
