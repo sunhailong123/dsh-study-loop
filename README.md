@@ -54,6 +54,28 @@ dsh plugin --profile web add link:D:\path\to\dsh-study-loop
 
 「收起」= 这一轮作废（到点出新轮），但右下角按钮还在，随时能点回来。「+10 分钟后」= 只是延后，同批题到点重弹。
 
+## 代码块
+
+学习和答题里都能直接写代码，不需要任何第三方依赖（插件仍然是零 npm 依赖）：
+
+- ` ```lang ` 围栏 → 渲染成带语言标签、复制按钮、超长自动滚动的代码块；
+- `` `行内代码` `` → 等宽小胶囊；
+- 围栏里做**轻量高亮**：注释、字符串、数字、关键字四种颜色，覆盖 JS/TS、Python、SQL、Go、Java 这类常见关键字表；
+- 复制按钮先试 `navigator.clipboard`，失败落 `document.execCommand('copy')`，点了会变成「已复制」。
+
+安全上：正文一律走 `textContent` / `createTextNode`，只有高亮结果（已逐段 HTML 转义过的纯 `<span>`）才用 `innerHTML`，所以 `prompt` 里贴 `<script>` 也只会显示成文本。
+
+````markdown
+手写一个 SSE 解析器：
+
+```js
+const lines = buf.split('\n')
+for (const ln of lines) if (ln.startsWith('data:')) handle(ln)
+```
+
+上面这段在学习卡正文、题干、参考答案、判分要点里都能直接用。
+````
+
 ## 题库怎么维护（三种方式，随便混用）
 
 ### 1. 模型生成（推荐）
@@ -170,7 +192,7 @@ dsh plugin --profile web add link:D:\path\to\dsh-study-loop
 ```bash
 npm run typecheck    # node --check 六个文件
 npm run selftest     # 宿主 + 纯函数：141 项（含手造 xlsx、CSV、间隔重复、HTTP 端点）
-npm run clienttest   # 客户端假 DOM：64 项（学习/答题/题库/设置四个 tab 的行为、轮询不打断阅读）
+npm run clienttest   # 客户端假 DOM：74 项（四个 tab 的行为、轮询不打断阅读、代码块与复制按钮）
 npm test             # 两个都跑
 ```
 
@@ -178,13 +200,14 @@ npm test             # 两个都跑
 
 改了代码让它生效（不用重启桌面端）：本插件以 `link:` 依赖 + junction 装进 profile，
 `dsh-hmr` 的 `reconcileProfile()` 会比对模块的 mtime/ctime/size 并热替换；
-给它一个触发即可 — 给 profile 的 `package.json` 追加一个换行字节，等 10 秒，再改回来：
+给它一个触发即可 — 改 profile 的 **`cordis.patch.yml`**（追加一个换行字节，等十几秒，再改回来）。
+注意：改 `package.json` 只刷新 bundle 清单，**不会**重载 profile 包的代码：
 
 ```powershell
-$f = "$env:USERPROFILE\.dsh\profiles\desktop\package.json"
+$f = "$env:USERPROFILE\.dsh\profiles\desktop\cordis.patch.yml"
 $b = [IO.File]::ReadAllBytes($f)
 [IO.File]::WriteAllBytes($f, $b + [Text.Encoding]::UTF8.GetBytes("`n"))
-Start-Sleep 12
+Start-Sleep 16
 [IO.File]::WriteAllBytes($f, $b)
 ```
 
@@ -193,6 +216,7 @@ Start-Sleep 12
 ## 已知边界
 
 - 浮层是自绘 DOM 挂 `document.body`（z-index 2147482900），没走 `shell.overlay` 槽位（那一层 z-index 只有 20）。代价：插件被卸载时浮层不会自动清场，刷新页面即可。
+- 代码块只认 ` ``` ` 围栏和反引号行内代码，**不做 markdown 全量**（标题、列表、表格、图片都不渲染）。高亮是按关键字表匹配的轻量实现，不是 AST 级语法分析，排版怪一点不影响读。
 - 每 5 秒轮询一次 `/state`，但**状态没实质变化就不重画**；真要重画时也会把 `.sl-body` 的滚动位置还原，所以看着某道题的时候不会被打回顶部（v0.2.1 修的）。
 - 判分是**自评**（0–5），不调模型打分。想让模型判分的话，`/submit` 的 `score` 完全可以由外部算好再传。
 - 题目/学习卡都存 JSON，一万题以内无压力；作答历史截断到 2000 条。

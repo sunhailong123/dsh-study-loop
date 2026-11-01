@@ -37,6 +37,16 @@ window.__ModuleLoader__.load({
       '.sl-prompt{white-space:pre-wrap;opacity:.92;font-size:12.5px}',
       '.sl-bodytext{white-space:pre-wrap;font-size:12.5px;opacity:.9}',
       '.sl-code{white-space:pre-wrap;font:12px/1.5 ui-monospace,Consolas,monospace;background:var(--dsw-alias-bg-layer-2,#11151a);border:1px solid var(--dsw-alias-border-l2,#30363d);border-radius:8px;padding:8px 10px;overflow:auto;max-height:240px}',
+      '.sl-codeblock{border:1px solid var(--dsw-alias-border-l2,#30363d);border-radius:8px;overflow:hidden;background:var(--dsw-alias-bg-layer-2,#11151a)}',
+      '.sl-cb-head{display:flex;align-items:center;gap:8px;padding:3px 8px;border-bottom:1px solid var(--dsw-alias-border-l2,#30363d);background:rgba(255,255,255,.03)}',
+      '.sl-cb-lang{font-size:11px;opacity:.6;letter-spacing:.05em}',
+      '.sl-cb-copy{font-size:11px;padding:1px 8px}',
+      '.sl-code-body{margin:0;padding:8px 10px;overflow:auto;max-height:340px;font:12px/1.55 ui-monospace,Consolas,"Cascadia Code",monospace;white-space:pre;tab-size:2}',
+      '.sl-tk-com{color:#8b949e;font-style:italic}',
+      '.sl-tk-str{color:#a5d6ff}',
+      '.sl-tk-num{color:#79c0ff}',
+      '.sl-tk-kw{color:#ff7b72}',
+      '.sl-inline{font:11.5px/1.5 ui-monospace,Consolas,monospace;background:var(--dsw-alias-bg-layer-1,#1b1f24);border:1px solid var(--dsw-alias-border-l2,#30363d);border-radius:5px;padding:0 4px;white-space:pre-wrap}',
       '.sl-ta{width:100%;box-sizing:border-box;min-height:80px;resize:vertical;background:var(--dsw-alias-bg-layer-2,#11151a);color:inherit;border:1px solid var(--dsw-alias-border-l2,#30363d);border-radius:8px;padding:8px 10px;font:12.5px/1.55 inherit;font-family:inherit}',
       '.sl-in{background:var(--dsw-alias-bg-layer-2,#11151a);color:inherit;border:1px solid var(--dsw-alias-border-l2,#30363d);border-radius:7px;padding:5px 8px;font:12.5px/1.5 inherit;font-family:inherit;min-width:0}',
       '.sl-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}',
@@ -167,6 +177,170 @@ window.__ModuleLoader__.load({
     function loadDraft(qid) { try { return localStorage.getItem(draftKey(qid)) || '' } catch (e) { return '' } }
     function saveDraft(qid, val) { try { localStorage.setItem(draftKey(qid), val) } catch (e) { /* 存不了就算了 */ } }
     function clearDraft(qid) { try { localStorage.removeItem(draftKey(qid)) } catch (e) { /* ignore */ } }
+
+    // ---------------------------------------------------------------- 富文本：代码块
+    // 不支持 markdown 全量，只做三件最有用的：``` 围栏代码块、`行内代码`、代码里的轻量高亮。
+    // 全部用 textContent / createTextNode 落字，任何输入都不会被当成 HTML 执行。
+    var KW = ('const let var function return if else for while do switch case break continue new class extends super ' +
+      'import export from default async await try catch finally throw typeof instanceof in of delete void yield ' +
+      'this null undefined true false def elif lambda pass raise with as None True False self print ' +
+      'SELECT FROM WHERE INSERT UPDATE DELETE JOIN LEFT RIGHT INNER GROUP ORDER BY LIMIT HAVING ' +
+      'public private protected static final package struct interface impl func go defer chan range').split(/\s+/)
+
+    function escapeHtml(s) {
+      return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    }
+
+    // 切成 [类别, 文本] 片段。类别为 '' / 'com' / 'str' / 'num' / 'kw'。
+    // 单遍扫描：先切注释与字符串，再在剩余片段里挑关键字与数字，不存在「替换顺序」互相踩的问题。
+    function tokenize(code) {
+      var src = String(code === null || code === undefined ? '' : code)
+      var out = []
+      var i = 0
+      var n = src.length
+      while (i < n) {
+        var ch = src.charAt(i)
+        var two = src.substr(i, 2)
+        if (two === '//' || ch === '#') {
+          var end = src.indexOf('\n', i)
+          if (end < 0) end = n
+          out.push(['com', src.slice(i, end)])
+          i = end
+          continue
+        }
+        if (two === '/*') {
+          var close = src.indexOf('*/', i + 2)
+          close = close < 0 ? n : close + 2
+          out.push(['com', src.slice(i, close)])
+          i = close
+          continue
+        }
+        if (ch === '"' || ch === "'" || ch === '`') {
+          var q = ch
+          var j = i + 1
+          while (j < n) {
+            var cj = src.charAt(j)
+            if (cj === '\\') { j += 2; continue }
+            if (cj === q) { j += 1; break }
+            if (q !== '`' && cj === '\n') break
+            j += 1
+          }
+          out.push(['str', src.slice(i, j)])
+          i = j
+          continue
+        }
+        if (/[0-9]/.test(ch) && !/[A-Za-z_$]/.test(src.charAt(i - 1) || '')) {
+          var k = i
+          while (k < n && /[0-9a-fA-FxX._]/.test(src.charAt(k))) k += 1
+          out.push(['num', src.slice(i, k)])
+          i = k
+          continue
+        }
+        if (/[A-Za-z_$]/.test(ch)) {
+          var w = i
+          while (w < n && /[A-Za-z0-9_$]/.test(src.charAt(w))) w += 1
+          var word = src.slice(i, w)
+          out.push([KW.indexOf(word) >= 0 ? 'kw' : '', word])
+          i = w
+          continue
+        }
+        out.push(['', ch])
+        i += 1
+      }
+      return out
+    }
+
+    // 兼容旧调用：返回 HTML 字符串（内容逐段转义过，可安全当 innerHTML 用）。
+    function highlight(code) {
+      return tokenize(code).map(function (t) {
+        return t[0] ? '<span class="sl-tk-' + t[0] + '">' + escapeHtml(t[1]) + '</span>' : escapeHtml(t[1])
+      }).join('')
+    }
+
+    function copyText(text) {
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(text); return true }
+      } catch (e) { /* 落到下面的兜底 */ }
+      try {
+        var ta = document.createElement('textarea')
+        ta.value = text
+        ta.style.cssText = 'position:fixed;left:-9999px;top:0'
+        document.body.appendChild(ta)
+        ta.select()
+        document.execCommand('copy')
+        document.body.removeChild(ta)
+        return true
+      } catch (e) { return false }
+    }
+
+    // 一个代码块：头部显示语言 + 复制按钮，正文高亮。
+    function codeBlock(code, lang) {
+      var label = String(lang || '').trim() || 'code'
+      var copyBtn = h('button', { class: 'sl-btn sl-cb-copy', text: '复制' }, [])
+      copyBtn.addEventListener('click', function () {
+        var ok = copyText(code)
+        copyBtn.textContent = ok ? '已复制' : '复制失败'
+        setTimeout(function () { copyBtn.textContent = '复制' }, 1400)
+      })
+      var body = h('pre', { class: 'sl-code-body' }, [])
+      // 高亮结果是纯 span + 转义文本，这里才用 innerHTML；内容已全部 escape。
+      body.innerHTML = highlight(code)
+      return h('div', { class: 'sl-codeblock' }, [
+        h('div', { class: 'sl-cb-head' }, [
+          h('span', { class: 'sl-cb-lang', text: label }),
+          h('div', { class: 'sl-spacer' }),
+          copyBtn,
+        ]),
+        body,
+      ])
+    }
+
+    // 把一段文本按 ``` 切成「文本 / 代码块」交替，文本里的 `x` 再变成行内代码。
+    function richText(text, cls) {
+      var src = String(text === null || text === undefined ? '' : text)
+      var wrap = h('div', { class: cls || 'sl-bodytext' }, [])
+      var lines = src.split('\n')
+      var buf = []
+      function flushText() {
+        if (!buf.length) return
+        var chunk = buf.join('\n')
+        buf = []
+        // 行内代码：`x`（不跨行、允许出现反引号以外任意字符）
+        var parts = chunk.split(/(`[^`\n]+`)/)
+        for (var i = 0; i < parts.length; i++) {
+          var p = parts[i]
+          if (!p) continue
+          if (p.length > 2 && p.charAt(0) === '`' && p.charAt(p.length - 1) === '`') {
+            wrap.appendChild(h('code', { class: 'sl-inline', text: p.slice(1, -1) }))
+          } else {
+            wrap.appendChild(document.createTextNode(p))
+          }
+        }
+      }
+      var i = 0
+      while (i < lines.length) {
+        var line = lines[i]
+        var m = /^\s*```+\s*([A-Za-z0-9_+#.-]*)\s*$/.exec(line)
+        if (!m) { buf.push(line); i += 1; continue }
+        // 开了围栏：找闭合的那一行
+        var lang = m[1]
+        var codeLines = []
+        var j = i + 1
+        var closed = false
+        while (j < lines.length) {
+          if (/^\s*```+\s*$/.test(lines[j])) { closed = true; break }
+          codeLines.push(lines[j])
+          j += 1
+        }
+        flushText()
+        wrap.appendChild(codeBlock(codeLines.join('\n'), lang))
+        i = closed ? j + 1 : j
+        // 没闭合就把剩下的都当代码，不再找围栏
+        if (!closed) break
+      }
+      flushText()
+      return wrap
+    }
 
     // ---------------------------------------------------------------- 渲染入口
     function render() {
@@ -328,8 +502,8 @@ window.__ModuleLoader__.load({
             it.angle ? h('span', { class: 'sl-chip', text: '角度 ' + it.angle }) : null,
           ]),
         ])
-        if (it.summary) box.appendChild(h('div', { class: 'sl-prompt', text: it.summary }))
-        if (it.body) box.appendChild(h('div', { class: 'sl-bodytext', text: it.body }))
+        if (it.summary) box.appendChild(richText(it.summary, 'sl-prompt'))
+        if (it.body) box.appendChild(richText(it.body, 'sl-bodytext'))
         if (kp.length) {
           box.appendChild(h('div', { class: 'sl-sub', text: '要点：' }))
           box.appendChild(keyList)
@@ -378,7 +552,7 @@ window.__ModuleLoader__.load({
         h('span', { class: 'sl-id', text: q.id + (q.lessonTitle ? ' · ' + q.lessonTitle : '') + (q.type ? ' · ' + q.type : '') }),
       ].concat(tags)))
       box.appendChild(h('div', { class: 'sl-t', text: q.title }))
-      box.appendChild(h('div', { class: 'sl-prompt', text: q.prompt }))
+      box.appendChild(richText(q.prompt, 'sl-prompt'))
 
       if (q.hint) {
         box.appendChild(h('details', {}, [
@@ -443,7 +617,7 @@ window.__ModuleLoader__.load({
       }, [state.busy[q.id] ? '写入中…' : '提交并落盘']))
       box.appendChild(actions)
 
-      if (state.showAnswer[q.id] && key && key.answer) box.appendChild(h('div', { class: 'sl-code', text: key.answer }))
+      if (state.showAnswer[q.id] && key && key.answer) box.appendChild(richText(key.answer, 'sl-code'))
       return box
     }
 
@@ -454,11 +628,11 @@ window.__ModuleLoader__.load({
       var items = key.rubric || []
       for (var i = 0; i < items.length; i++) ul.appendChild(h('li', { text: items[i] }))
       wrap.appendChild(ul)
-      if (key.trap) wrap.appendChild(h('div', { class: 'sl-warn', text: '常见错法：' + key.trap }))
+      if (key.trap) wrap.appendChild(richText('常见错法：' + key.trap, 'sl-warn'))
       if (key.lesson && key.lesson.body) {
         wrap.appendChild(h('details', {}, [
           h('summary', { class: 'sl-btn', style: 'display:inline-block' }, ['回到学习卡']),
-          h('div', { class: 'sl-bodytext', text: key.lesson.body }),
+          richText(key.lesson.body, 'sl-bodytext'),
         ]))
       }
       return wrap
@@ -506,7 +680,7 @@ window.__ModuleLoader__.load({
       if (state.promptPreview) {
         body.appendChild(h('div', { class: 'sl-sec' }, [
           h('h4', {}, ['即将发给模型的提示词']),
-          h('div', { class: 'sl-code', text: state.promptPreview }),
+          codeBlock(state.promptPreview, 'text'),
         ]))
       }
 

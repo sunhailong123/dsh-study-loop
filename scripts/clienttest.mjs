@@ -52,6 +52,21 @@ class FakeEl {
     for (const c of this.children) c.parentNode = null
     this.children = []
   }
+  // 代码高亮用 innerHTML 落 span；这里只做极简处理：记下原文，并把标签剥掉当纯文本，
+  // 好让 textContent 断言仍能读到代码内容（真浏览器里就是 DOM 结构）。
+  get innerHTML() { return this._html || '' }
+  set innerHTML(v) {
+    this._html = v === null || v === undefined ? '' : String(v)
+    this._text = this._html
+      .replace(/<[^>]*>/g, '')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&amp;/g, '&')
+    for (const c of this.children) c.parentNode = null
+    this.children = []
+  }
+  select() { this.selected = true }
   get classList() { return String(this.attrs.class || '').split(/\s+/).filter(Boolean) }
   matches(sel) {
     const parts = String(sel).trim().split(/\s+/)
@@ -109,6 +124,8 @@ const document = {
   createElement: tag => new FakeEl(tag),
   createTextNode: text => { const el = new FakeEl('#text'); el._text = String(text); return el },
   addEventListener() {},
+  // 复制按钮的兜底路径（navigator.clipboard 在 node 里没有）
+  execCommand: () => true,
 }
 
 // ---------------------------------------------------------------- 假宿主接口
@@ -435,6 +452,67 @@ check('复习卡只给标题不给正文', card().textContent.indexOf('复习 ·
   check('状态变了 → 重画', card() !== before)
   check('重画后滚动位置被还原', card().querySelector('.sl-body').scrollTop === 420, card().querySelector('.sl-body').scrollTop)
   // 复位，后面的用例还要用原来的状态
+  host.state = roundState()
+  timers[0].fn()
+  await sleep(60)
+}
+
+// ---- 代码块（用户 2026-11-01 要求：学习和做题里都能看到格式化的代码）
+{
+  const round = roundState().value.round
+  round.id = 'r-code'
+  round.tab = 'study'
+  round.study = [
+    {
+      id: 'L-code', title: 'SSE 怎么切行', angle: '原理', isReview: false,
+      summary: '先看 `data:` 前缀',
+      body: '手写一个解析器：\n```js\nconst lines = buf.split("\\n")\nfor (const ln of lines) { if (ln.startsWith("data:")) handle(ln) }\n```\n完事。',
+      keyPoints: ['按 \\n\\n 切事件'], tags: [], hasCard: true, dueLabel: '', questionIds: ['Q-code'],
+    },
+  ]
+  round.questions = [
+    {
+      id: 'Q-code', lessonId: 'L-code', lessonTitle: 'SSE 怎么切行', type: '理解', angle: '原理',
+      title: '为什么不能按 chunk 切', prompt: '看这段：\n```python\ndef cut(buf):\n    return buf.split("\\n\\n")\n```\n问题在哪？',
+      hint: '', isReview: false, dueLabel: '',
+    },
+  ]
+  round.answered = {}
+  host.state = { ok: true, value: Object.assign(roundState().value, { round }) }
+  // 先让轮询把新状态吃进去，再回到学习 tab 看学习卡的代码块
+  timers[0].fn()
+  await sleep(80)
+  tabBtn('学习').dispatch('click')
+  await sleep(40)
+
+  const cbs = () => card().querySelectorAll('.sl-codeblock')
+  check('学习卡里的围栏代码渲染成代码块', cbs().length === 1, card().textContent.slice(0, 120))
+  if (cbs().length !== 1) {
+    console.log('    (跳过后续代码块断言)')
+  } else {
+    check('代码块标出语言', cbs()[0].querySelectorAll('.sl-cb-lang')[0].textContent === 'js', cbs()[0].textContent.slice(0, 40))
+    check('代码正文原文保留', cbs()[0].querySelectorAll('.sl-code-body')[0].textContent.indexOf('ln.startsWith("data:")') >= 0, cbs()[0].querySelectorAll('.sl-code-body')[0].textContent)
+    check('代码块有关键字高亮', cbs()[0].querySelectorAll('.sl-code-body')[0].innerHTML.indexOf('sl-tk-kw') >= 0)
+    check('代码块有复制按钮', cbs()[0].querySelectorAll('.sl-cb-copy').length === 1)
+    check('行内代码变成 code 元素', card().querySelectorAll('.sl-inline').length >= 1, card().querySelectorAll('.sl-inline').map(e => e.textContent))
+    check('代码块之外的文字没被吞掉', card().textContent.indexOf('完事。') >= 0)
+
+    // 复制按钮点了要变「已复制」（走 execCommand 兜底）
+    const copyBtn = cbs()[0].querySelectorAll('.sl-cb-copy')[0]
+    copyBtn.dispatch('click')
+    check('点复制 → 按钮反馈', copyBtn.textContent === '已复制', copyBtn.textContent)
+  }
+
+  // 答题 tab 的题干同样支持代码块
+  tabBtn('答题').dispatch('click')
+  await sleep(30)
+  const qEl = card().querySelectorAll('.sl-q')[0]
+  const qcb = qEl ? qEl.querySelectorAll('.sl-codeblock') : []
+  check('题干里的围栏代码也渲染成代码块', qcb.length === 1, qEl && qEl.textContent.slice(0, 80))
+  if (qcb.length === 1) {
+    check('题干代码块标出 python', qcb[0].querySelectorAll('.sl-cb-lang')[0].textContent === 'python', qcb[0].textContent.slice(0, 30))
+  }
+
   host.state = roundState()
   timers[0].fn()
   await sleep(60)
